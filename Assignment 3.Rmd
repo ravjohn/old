@@ -1,15 +1,23 @@
 ---
-title: "Assigment 3"
-author: "Raveena John"
-date: "9/20/2021"
-output: html_document
+title: "VIS 2128 Assigment 3"
+subtitle: "Spatial Relationships"
+author: "Mike Deloge, Katia Krotova, Raveena John"
+date: "9/22/2021"
+output:
+  html_document:
+    code_folding: hide
+
+
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+
+***
+### Load packages.
+```{r Load Packages, message=FALSE, warning=FALSE}
 library(sf)
 library(tidyverse)
 library(ggthemes)
@@ -18,27 +26,27 @@ library(units)
 library(nngeo)
 ```
 
-```{r}
-wifi <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/6a7a0ab4e964471f819d40078b17e7fa_0.kml?outSR=%7B%22latestWkid%22%3A3857%2C%22wkid%22%3A102100%7D", 
+### Load data.
+```{r Load Data}
+EV <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/465e00f9632145a1ad645a27d27069b4_2.kml?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", 
                   quiet = TRUE) 
-
-open <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2b3c0fa13b1c468eb702a3645fcc6bcb_5.kml", 
-                 quiet = TRUE)
 
 centers <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/acedd06b39854088b0f2fefccffebf84_0.kml?outSR=%7B%22latestWkid%22%3A3857%2C%22wkid%22%3A102100%7D", 
                    quiet = TRUE) 
 
 main <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/440c7ec0178d4c8593aecef7ea96bb4d_0.kml?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", 
+                 quiet = TRUE)
+
+nhoods <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/3525b0ee6e6b427f9aab5d0a1d0a1a28_0.kml?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", 
                  quiet = TRUE) 
 ```
 
-```{r}
+
+### Transform data to be consistent with Massachusetts State Plane.
+```{r Transform Data}
 MA_state_plane <- "+proj=lcc +lat_1=41.71666666666667 +lat_2=42.68333333333333 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
 
-wifi <- wifi %>%
-  st_transform(MA_state_plane)
-
-open <- open %>%
+EV <- EV %>%
   st_transform(MA_state_plane)
 
 centers <- centers %>%
@@ -46,5 +54,91 @@ centers <- centers %>%
 
 main <- main %>%
   st_transform(MA_state_plane)
+
+nhoods <- nhoods %>%
+  st_transform(MA_state_plane)
+```
+***
+## Plots
+
+
+### 1. Number and Proportion of Community Centers in Neighborhoods
+```{r Plot 1}
+nhoods <- nhoods %>%
+  mutate(num_centers = lengths(st_covers(nhoods,centers)))
+
+n_centers <- sum(nhoods$num_centers)
+max_n_centers <- max(nhoods$num_centers)
+pct_n_centers <- max_n_centers/n_centers
+name_max_centers <- nhoods[ which(nhoods$num_centers=='5'),1]
+
+left_side  <- st_bbox(nhoods)$xmin
+top_side <- st_bbox(main)$ymax
+
+ggplot(nhoods) +
+  geom_sf(color = NA, 
+          aes(fill = num_centers)) +
+  scale_fill_viridis_c(name = "Boston neighborhoods\nby number of community centers",
+                       breaks = breaks <- seq(0, 5, by = 1),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "community centers")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side+1800, 
+           label = paste("Of the ", 
+                         prettyNum(n_centers, big.mark = ","),
+                         " community centers in Boston,\n", 
+                         prettyNum(max_n_centers, big.mark = ","),
+                         " (", 
+                         prettyNum(100*pct_n_centers, digits = 0),
+                         "%) are in the ",
+                         name_max_centers$Name,
+                         " neighborhood.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+theme_map() +
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
 ```
 
+This map shows the number of community centers, provided by the City of Boston and most recently updated in 2018, within each neighborhood. This map shows there are between 0 and 5 centers in each neighborhood and that the greatest number of community centers are located in the Dorchester neighborhood. It would be useful to look at the population of each neighborhood to consider the per capita distribution of community centers. Another aspect to consider is the specific locations of community centers, as a center near the border of a neighborhood could serve residents of multiple neighborhoods.
+
+
+
+
+
+
+
+### 2. Number and Proportion of Neighborhoods that Overlap with Main Street Districts
+```{r Plot 2}
+nhoods <- nhoods %>%
+  mutate(num_main = lengths(st_intersects(nhoods, main))) %>%
+  mutate(has_main = num_main > 0)
+
+n_nhoods_main <- sum(nhoods$has_main)
+
+ggplot()+
+  geom_sf(data = nhoods,
+          aes(fill = has_main))+
+    scale_fill_manual(values = c("gray86","coral1"),
+              name = "Boston Neighborhoods by \npresence of a Main Street District",
+              labels = c("Neighborhood wihtout a\nMain Street District", "Neighborhood with a\nMain Street District"))+
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) + annotate(geom = "text", x = left_side, 
+           y = top_side+1800, 
+           label = paste(n_nhoods_main ,
+                         "of Boston's", 
+                         length(nhoods$Name),
+                         "neighborhoods contain\nor overlap with a Main Street District."),
+           hjust = 0, vjust = 0, size = 3) +
+theme_map() +
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+This map shows the Boston neighborhoods that contain a designated Main Street District. These  are commercial district organizations that promote and attract commerce to the area. The map clearly shows a lack of districts in the downtown area, but does not indicate the amount to which each neighborhood contains a district. This map would be a good starting point to examine the effectiveness of or need for Main Street Districts in the highlighted neighborhoods, which are geographically larger and likely less dense.
